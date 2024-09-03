@@ -1,0 +1,4 @@
+flask
+sqlite3
+werkzeug
+flask_cors

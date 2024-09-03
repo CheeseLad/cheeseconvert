@@ -11,6 +11,7 @@ from datetime import datetime
 app = Flask(__name__)
 
 files_to_convert_folder = 'files-to-convert'
+converted_files_folder = 'converted-files'
 
 cors = CORS(app, resources={r"/api/*": {"origins": "*"}})
 
@@ -89,14 +90,45 @@ def total_size():
     conn.close()
     return jsonify({'message': 'Total size', 'total_size': total_size})
 
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    username = data['username']
+    password = data['password']
+
+    conn = get_db_connection()
+    conn.execute('INSERT INTO users (username, password) VALUES (?, ?)', (username, password))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'message': 'User registered successfully'})
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data['username']
+    password = data['password']
+
+    conn = get_db_connection()
+    user = conn.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password)).fetchone()
+    conn.close()
+
+    if user:
+        return jsonify({'message': 'Login successful'})
+    return jsonify({'message': 'Invalid credentials'})
+
 
 if __name__ == '__main__':
 
-  if not os.path.exists(files_to_convert_folder):
-    os.makedirs(files_to_convert_folder)
+    if not os.path.exists(files_to_convert_folder):
+        os.makedirs(files_to_convert_folder)
 
-  db = sqlite3.connect('database.db')
-  cursor = db.cursor()
-  cursor.execute('CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY, filename TEXT, extension TEXT, storage_size INTEGER, upload_time TEXT)')
-  db.commit()
-  app.run(port=5000)
+    if not os.path.exists(converted_files_folder):
+        os.makedirs(converted_files_folder)
+
+    db = sqlite3.connect('database.db')
+    cursor = db.cursor()
+    cursor.execute('CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY, filename TEXT, extension TEXT, storage_size INTEGER, upload_time TEXT)')
+    cursor.execute('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT, password TEXT)')
+    db.commit()
+    app.run(port=5000)

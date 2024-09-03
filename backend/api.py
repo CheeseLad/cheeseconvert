@@ -34,11 +34,11 @@ def upload_file():
         filename = secure_filename(file.filename)
         upload_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         extension = filename.split('.')[-1]
-        storage_size = os.path.getsize(f'{files_to_convert_folder}/{filename}') / 1024
         file.save(f'{files_to_convert_folder}/{filename}')
+        storage_size = os.path.getsize(f'{files_to_convert_folder}/{filename}') / 1024
 
         conn = get_db_connection()
-        conn.execute('INSERT INTO files (filename, extension, storage_size, upload_time) VALUES (?, ?, ?, ?)', (filename, extension, storage_size, upload_time))
+        conn.execute('INSERT INTO files (filename, extension, storage_size, upload_time, is_converted) VALUES (?, ?, ?, ?, ?)', (filename, extension, storage_size, upload_time, 0))
         conn.commit()
         conn.close()
 
@@ -75,6 +75,51 @@ def file_info():
         file = conn.execute('SELECT * FROM files WHERE id = ?', (file_id,)).fetchone()
         conn.close()
         return jsonify({'message': 'File information', 'file': dict(file)})
+
+@app.route('/convert-file', methods=['GET'])
+def convert_file():
+    file_id = request.args.get('file_id')
+    convert_to = request.args.get('convert_to')
+
+    conn = get_db_connection()
+    file = conn.execute('SELECT * FROM files WHERE id = ?', (file_id,)).fetchone()
+    conn.close()
+
+    if file:
+        filename = file['filename']
+        extension = file['extension']
+        storage_size = file['storage_size']
+        upload_time = file['upload_time']
+
+        if extension == convert_to:
+            return jsonify({'message': 'File is already in the selected format'})
+
+        os.system(f'ffmpeg -i {files_to_convert_folder}/{filename} {converted_files_folder}/{filename.split(".")[0]}.{convert_to}')
+
+        conn = get_db_connection()
+        conn.execute('UPDATE files SET is_converted = 1 WHERE id = ?', (file_id,))
+        conn.commit()
+        conn.close()
+
+        return jsonify({'message': 'File converted successfully'})
+
+    return jsonify({'message': 'File not found'})
+
+@app.route('/download-file', methods=['GET'])
+def download_file():
+    file_id = request.args.get('file_id')
+
+    conn = get_db_connection()
+    file = conn.execute('SELECT * FROM files WHERE id = ?', (file_id,)).fetchone()
+    conn.close()
+
+    if file:
+        filename = file['filename']
+        extension = file['extension']
+
+        return jsonify({'message': 'File downloaded successfully'})
+
+    return jsonify({'message': 'File not found'})
 
 @app.route('/total-uploads', methods=['GET'])
 def total_uploads():
@@ -116,6 +161,7 @@ def login():
     if user:
         return jsonify({'message': 'Login successful'})
     return jsonify({'message': 'Invalid credentials'})
+    
 
 
 if __name__ == '__main__':
@@ -128,7 +174,7 @@ if __name__ == '__main__':
 
     db = sqlite3.connect('database.db')
     cursor = db.cursor()
-    cursor.execute('CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY, filename TEXT, extension TEXT, storage_size INTEGER, upload_time TEXT)')
+    cursor.execute('CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY, filename TEXT, extension TEXT, storage_size INTEGER, upload_time, is_converted BOOLEAN DEFAULT 0)')
     cursor.execute('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT, password TEXT)')
     db.commit()
     app.run(port=5000)
